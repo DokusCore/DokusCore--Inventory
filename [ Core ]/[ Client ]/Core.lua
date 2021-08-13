@@ -146,9 +146,10 @@ CreateThread(function()
           if (Dist <= 2.5) then DrawText3D(x,y,(z - 2.4), 600, '~color_green~ALT') end
           if ((Dist <= 2.5) and Control) then
             local Data = TSC('DokusCore:S:Core:DB:GetStorageViaBoxID', { BoxID })
+            local User = TSC('DokusCore:S:Core:GetCoreUserData')
             for k,v in pairs(Data) do
               local Item, Amount = v.Item, v.Amount
-              local Steam, CharID = v.Steam, v.CharID
+              local Steam, CharID = User.Steam, User.CharID
               TSC('DokusCore:S:Core:DB:AddInventoryItem', { Steam, CharID, nil, { Item, Amount, nil }})
               TSC('DokusCore:S:Core:DB:DelStorageItemViaBoxID', { BoxID, Item })
               BoxIDsTxt = {}
@@ -192,6 +193,7 @@ CreateThread(function()
     local x,y,z = tonumber(Data[1]), tonumber(Data[2]), (tonumber(Data[3] - 3))
     local Coords = vector3(x,y,z)
     CreateBox(Coords, v[1])
+    Wait(500)
   end
 end)
 --------------------------------------------------------------------------------
