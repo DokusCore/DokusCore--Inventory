@@ -1,203 +1,121 @@
 --------------------------------------------------------------------------------
 ---------------------------------- DokusCore -----------------------------------
 --------------------------------------------------------------------------------
-Drops = {}
-BoxIDsTxt = {}
-InvMenuOpen = false
+CanInvBeOpened, IsInvOpen, IsBoxOpen = true, false, false
+Steam, CharID, IsPickingUpItem = nil, nil, false
+NewDrop, MenuOpen = false, false
+PromptBox = nil
+ActKeyInv = _Inventory.ActKey.OpenInv
+ActKeyBox = _Inventory.ActKey.OpenBox
+OpenBoxGroup = GetRandomIntInRange(0, 0xffffff)
+BoxArray = {}
+BoxTXTs = {}
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
--- Register whenever the user opens the inventory
---------------------------------------------------------------------------------
-CreateThread(function()
-  while true do Wait(0)
-    local Control = IsControlPressed(0, Keys['TAB'])
-    if not InvMenuOpen and Control then
-      InvMenuOpen = true
-      local Items = {}
-      local cData = TSC('DokusCore:S:Core:GetCoreUserData')
-      local Table, Steam, CharID = DB.Banks.Get, cData.Steam, cData.CharID
-      local Bank = TSC('DokusCore:S:Core:DB:GetViaSteamAndCharID', {Table, Steam, CharID})[1]
-      TriggerEvent('DokusCore:Backpack:C:UpdateValutas', Bank)
-      local InvData = TSC('DokusCore:S:Core:DB:GetInventory', {Steam, CharID})
-      for k, v in pairs(InvData) do local Item, Amount = v.Item, v.Amount table.insert(Items, {Item, Amount}) end
-      SendNUIMessage({ items = Items })
-      OpenInv(cData.Steam, cData.CharID) Wait(500)
-      Items = {}
-    end
-  end
-end)
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- Update the valuta values when the inventory opens
---------------------------------------------------------------------------------
-RegisterNetEvent('DokusCore:Backpack:C:UpdateValutas')
-AddEventHandler('DokusCore:Backpack:C:UpdateValutas', function(Bank)
-  while InvMenuOpen do Wait(0)
-    SendNUIMessage({ wallet = Bank.Money, gold = Bank.Gold,
-      bank = Bank.BankMoney, label = 'CURRENT JOB',
-    }) Wait(1000)
-	end
-end)
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- This triggers when ever the user closes the inventory
---------------------------------------------------------------------------------
-RegisterNUICallback('NUIFocusOff', function()
-  InvMenuOpen = false
-  SetNuiFocus(false, false)
-  SendNUIMessage({type = 'close'})
-end)
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- This triggers whenever the user drops an item
---------------------------------------------------------------------------------
-RegisterNUICallback("drop", function(Data)
-  local Stop = false
-  local Item, Amount = Data.item, Data.count
-  local Ped = PlayerPedId()
-  local pCoords = GetEntityCoords(Ped)
-  local x,y,z = pCoords[1], pCoords[2], (pCoords[3] + 2.0)
-  local nCoords = vector3(x,y,z)
-  local Hash = 'P_COTTONBOX01X'
-  if (IsModelValid(Hash)) then LoadModel(Hash) end
-  local cData = TSC('DokusCore:S:Core:GetCoreUserData')
-  local Steam, CharID = cData.Steam, cData.CharID
-  local NewBox, IsBoxMy, ExItem = true, false, false
-  local _BoxID, _Item, _Amount, _Coords = nil, nil, nil, nil
-
-  function CreateNewDrop()
-    local Box = CreateObject(Hash, x,y,z, true, false, false)
-    PlaceObjectOnGroundProperly(Box)
-    FreezeEntityPosition(Box, true)
-    SetEntityAsMissionEntity(Box)
-    PlaySoundFrontend("show_info", "Study_Sounds", true, 0)
-    local Index = { false, Box, Item, Amount, nCoords }
-    AddToStorage(Steam, CharID, 'Drop', Index)
-    TSC('DokusCore:S:Core:DB:DelInventoryItem', {Item, Amount, Steam, CharID})
-    Animation(Ped)
-  end
-
-  local Data = TSC('DokusCore:S:Core:DB:GetAllStorages')
-  for k,v in pairs(Data) do
-    local Data = ConvertToCoords(v.Coords)
-    local Data = SplitString(Data, " ")
-    local x,y,z = tonumber(Data[1]), tonumber(Data[2]), tonumber(Data[3])
-    local Coords = vector3(x,y,z)
-    local Dist = Vdist(Coords, pCoords)
-    local IsUser = (v.Steam == Steam)
-
-    if (not (IsUser) and (Dist <= 5)) then Stop = true print("Not your Box") return end
-    if ((IsUser) and ((Dist <= 5) and (Dist > 2.5))) then Stop = true print("Get Closer to your box") return end
-
-    if (Dist <= 2.5) then
-      if (v.Steam == Steam) then
-        NewBox = false IsBoxMy = true _BoxID = v.BoxID
-        if (v.Item == Item) then
-          ExItem = true
-          _BoxID, _Item, _Amount, _Coords = v.BoxID, Item, Amount, v.Coords
-        end
-      end
-    end
-  end
-
-  if not (Stop) then
-    if (NewBox) then CreateNewDrop() end
-    if not (NewBox) then
-      if ((IsBoxMy) and (ExItem)) then return AddToExistingItem(Ped, Steam, CharID, _BoxID, _Item, _Amount, nCoords) end
-      if ((IsBoxMy) and not (ExItem)) then return InsertNewItemIntoBox(Ped, Steam, CharID, _BoxID, Item, Amount, nCoords) end
-    end
-  end
-end)
-
---------------------------------------------------------------------------------
+-- Register when the user wants to open the inventory
 --------------------------------------------------------------------------------
 CreateThread(function()
   while true do Wait(1000)
-    local DropTxts = {}
-    local Data = TSC('DokusCore:S:Core:DB:GetAllStorages')
-    if (Data[1] ~= nil) then GrabData = true
-      while GrabData do Wait(0)
-        for k,v in pairs(Data) do
-          table.insert(DropTxts, { v.BoxID, v.Coords })
-        end GrabData = false
+    while CanInvBeOpened do Wait(0)
+      local Control = IsControlJustReleased(0, ActKeyInv)
+      if (not (IsInvOpen) and (Control) and not (IsPickingUpItem)) then
+        IsInvOpen = true
+        local Core = TSC('DokusCore:Core:GetCoreUserData')
+        Steam, CharID = Core.Steam, Core.CharID
+        TriggerEvent('DokusCore:Inventory:UpdateBankValues')
+        local Inv = TSC('DokusCore:Core:DBGet:Inventory', { 'User', 'All', { Steam, CharID } })
+        if (Inv.Exist) then SendNUIMessage({ items = GetUsersItems(Inv) }) end
+        OpenInv()
+      elseif (IsInvOpen) and (Control) then
+        IsInvOpen = false
+        CloseInv()
       end
-      BoxIDsTxt = FilterTableFromDupes(DropTxts)
     end
   end
 end)
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
+-- Update users banking information in the inventory while open
+--------------------------------------------------------------------------------
+RegisterNetEvent('DokusCore:Inventory:UpdateBankValues')
+AddEventHandler('DokusCore:Inventory:UpdateBankValues', function()
+  local Bank = TSC('DokusCore:Core:DBGet:Banks', { 'User', { Steam, CharID } }).Result[1]
+  while IsInvOpen do Wait(0)
+    SendNUIMessage({
+      wallet = Bank.Money, gold = Bank.Gold,
+      bank = Bank.BankMoney, label = 'In Progress',
+    }) Wait(1000)
+  end
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+RegisterNetEvent('DokusCore:Inventory:Animation')
+AddEventHandler('DokusCore:Inventory:Animation', function(PedID) Animation(PedID) end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Delete all Boxes when the resource stops
+--------------------------------------------------------------------------------
+AddEventHandler('onResourceStop', function(resourceName)
+  if (GetCurrentResourceName() ~= resourceName) then return end
+  for k,v in pairs(BoxArray) do DeleteEntity(v.BoxID) end
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Then place all boxes back on the map.
+--------------------------------------------------------------------------------
 CreateThread(function()
-  while true do Wait(3000)
-    if (BoxIDsTxt[1] ~= nil) then
-      ShowBoxTxt = true
-      while ShowBoxTxt do Wait(0)
-        local Ped = PlayerPedId()
-        local pCoords = GetEntityCoords(Ped)
-        for k,v in pairs(BoxIDsTxt) do
-          local BoxID, Coords = v[1], v[2]
-          local Data = ConvertToCoords(Coords)
-          local Data = SplitString(Data, " ")
-          local x,y,z = tonumber(Data[1]), tonumber(Data[2]), tonumber(Data[3])
-          local Coords = vector3(x,y,z)
-          local Dist = Vdist(Coords, pCoords)
-          local Control = IsControlJustReleased(1, Keys['LALT'])
-          if (Dist <= 10) then DrawText3D(x,y,(z - 2.5), 150, 'Loot Drop') end
-          if (Dist <= 2.5) then DrawText3D(x,y,(z - 2.4), 600, '~color_green~ALT') end
-          if ((Dist <= 2.5) and Control) then
-            local Data = TSC('DokusCore:S:Core:DB:GetStorageViaBoxID', { BoxID })
-            local User = TSC('DokusCore:S:Core:GetCoreUserData')
-            for k,v in pairs(Data) do
-              local Item, Amount = v.Item, v.Amount
-              local Steam, CharID = User.Steam, User.CharID
-              TSC('DokusCore:S:Core:DB:AddInventoryItem', { Steam, CharID, nil, { Item, Amount, nil }})
-              TSC('DokusCore:S:Core:DB:DelStorageItemViaBoxID', { BoxID, Item })
-              BoxIDsTxt = {}
-            end
-            Animation(Ped)
-            DeleteEntity(BoxID)
+  local Data = TSC('DokusCore:Core:DBGet:Storages', { 'DropBox', 'All' })
+  if (Data.Exist) then
+    for k,v in pairs(Data.Result) do
+      local Coords = json.decode(v.Coords)
+      local Vector = vector3(Coords.x, Coords.y, Coords.z)
+      TSC('DokusCore:Core:DBSet:Storages', { 'DropBox', 'ReplaceID', { v.BoxID, CreateNewBox(Vector) } })
+    end
+  end
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Get players coords to feed box texts, this to prevent high resource SPU usages
+--------------------------------------------------------------------------------
+local PlayerCoords = nil
+CreateThread(function()
+  while true do Wait(1)
+    local PedID = PlayerPedId()
+    local Coords = GetEntityCoords(PedID)
+    PlayerCoords = Coords
+    Wait(500)
+  end
+end)
+--------------------------------------------------------------------------------
+-- Create the text above the boxes, and Register when the box is opened
+--------------------------------------------------------------------------------
+CreateThread(function() Wait(1000)
+  local Core = TSC('DokusCore:Core:GetCoreUserData')
+  Steam, CharID = Core.Steam, Core.CharID
+  while true do Wait(1000)
+    while (BoxTXTs[1] ~= nil) do Wait(0)
+      for k,v in pairs(BoxTXTs) do
+        local BoxID, Coords = BoxTXTs[k].BoxID, BoxTXTs[k].Coords
+        local x,y,z = Coords.x, Coords.y, (Coords.z - 0.65)
+        local Dist = Vdist(Coords, PlayerCoords)
+        local Close, Medium = (Dist <= 0.6), ((Dist > 0.6) and (Dist <= 2.0))
+        local Key = _Inventory.Interaction.UseKey
+        if ((Close) and (Key)) then DrawText3D(x,y,z, 300, 'Press ~color_green~E~q~ to open') end
+        if (Medium) then DrawText3D(x,y,z, 200, '{ Expire: Work in Progress }') end
+        if ((Medium) or (Far)) then IsBoxOpen = false end
+        if (Close) then
+          local Control = IsControlJustReleased(0, ActKeyBox)
+          if ((Control) and not (IsBoxOpen)) then
+            IsBoxOpen = true
+            TriggerEvent('DokusCore:Inventory:OpenBoxMenu', BoxID)
           end
         end
       end
     end
   end
 end)
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-function CreateBox(Coords, BoxID)
-  local Hash = 'P_COTTONBOX01X'
-  local Box = CreateObject(Hash, Coords, true, false, false)
-  PlaceObjectOnGroundProperly(Box)
-  FreezeEntityPosition(Box, true)
-  SetEntityAsMissionEntity(Box)
-  PlaySoundFrontend("show_info", "Study_Sounds", true, 0)
-  TSC('DokusCore:S:Core:DB:UpdateBoxIDs', {BoxID, Box})
-end
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- Delete all boxes on the map. Give all boxes a new ID
--- Then place all boxes back on the map.
---------------------------------------------------------------------------------
-CreateThread(function()
-  local IDs = {}
-  -- Delete all boxes on the map
-  local Data = TSC('DokusCore:S:Core:DB:GetAllStorages')
-  for k,v in pairs(Data) do table.insert(IDs, { v.BoxID, v.Coords }) end
-  local Filter = FilterTableFromDupes(IDs)
-  for k,v in pairs(Filter) do DeleteEntity(v[1]) end
-  Wait(2000)
-  -- Add all existing boxes back on the map
-  for k,v in pairs(Filter) do
-    local Data = ConvertToCoords(v[2])
-    local Data = SplitString(Data, " ")
-    local x,y,z = tonumber(Data[1]), tonumber(Data[2]), (tonumber(Data[3] - 3))
-    local Coords = vector3(x,y,z)
-    CreateBox(Coords, v[1])
-    Wait(500)
-  end
-end)
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
+
+
 
 
 
