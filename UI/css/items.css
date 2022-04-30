@@ -10,6 +10,7 @@
 #cigar          { background: url('../img/items/cigar.png') no-repeat; background-size: 100%; }
 #egg            { background: url('../img/items/egg.png') no-repeat; background-size: 100%; }
 #egg_box        { background: url('../img/items/egg_box.png') no-repeat; background-size: 100%; }
+#meat_cooked    { background: url('../img/items/meat_cooked.png') no-repeat; background-size: 100%; }
 #meat_uncooked  { background: url('../img/items/meat_uncooked.png') no-repeat; background-size: 100%; }
 #orange         { background: url('../img/items/orange.png') no-repeat; background-size: 90%; }
 #water_clean    { background: url('../img/items/water_clean.png') no-repeat; background-size: 90%;  }
