@@ -5,8 +5,8 @@ description 'DokusCore Inventory'
 author 'http://DokusCore.com'
 fx_version "adamant"
 games {"rdr3"}
-version '2.1.4'
--- version '-----'
+-- version '2.1.4'
+version '-----'
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 client_scripts {
